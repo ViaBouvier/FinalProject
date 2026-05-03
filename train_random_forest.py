@@ -1,6 +1,7 @@
 from ucimlrepo import fetch_ucirepo
 import pandas as pd
 import numpy as np
+import os
 from sklearn.model_selection import train_test_split
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
@@ -20,28 +21,23 @@ def load_data():
     return X, y
 
 
-def preprocess_and_train(X, y, lags=(1, 3, 24)):
-    df = X.copy()
-    df = df.reset_index(drop=True)
-    y = y.reset_index(drop=True)
+def build_features(X, y, lags=(1, 3, 24)):
+    df = X.copy().reset_index(drop=True)
+    y = y.copy().reset_index(drop=True)
     df['traffic_volume'] = y
 
-    #Require datetime to create time-based and lag features
     if 'date_time' in df.columns:
         df['date_time'] = pd.to_datetime(df['date_time'])
         df = df.sort_values('date_time').reset_index(drop=True)
         df['hour'] = df['date_time'].dt.hour
         df['dayofweek'] = df['date_time'].dt.dayofweek
     else:
-        #If no datetime, create placeholder time features from index
         df['hour'] = df.index % 24
         df['dayofweek'] = (df.index // 24) % 7
 
-    #Create lag features for historical traffic volume
     for lag in lags:
         df[f'lag_{lag}'] = df['traffic_volume'].shift(lag)
 
-    #We will use weather_main, the time features, and lag features
     candidate_cols = []
     if 'weather_main' in df.columns:
         candidate_cols.append('weather_main')
@@ -53,6 +49,21 @@ def preprocess_and_train(X, y, lags=(1, 3, 24)):
 
     X_features = df[candidate_cols].copy()
     y_target = df['traffic_volume'].copy()
+
+    # drop rows with NaNs (e.g., from lagging)
+    valid_idx = X_features.dropna().index
+    return X_features.loc[valid_idx].reset_index(drop=True), y_target.loc[valid_idx].reset_index(drop=True)
+
+
+def load_pipeline(path='rf_pipeline.pkl'):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Pipeline file not found: {path}. Run train_random_forest.py first.")
+    with open(path, 'rb') as f:
+        return pickle.load(f)
+
+
+def preprocess_and_train(X, y, lags=(1, 3, 24)):
+    X_features, y_target = build_features(X, y, lags=lags)
 
     cat_cols = X_features.select_dtypes(include=['object', 'category']).columns.tolist()
 
@@ -68,19 +79,10 @@ def preprocess_and_train(X, y, lags=(1, 3, 24)):
         ('rf', RandomForestRegressor(n_estimators=200, random_state=42, n_jobs=-1))
     ])
 
-    X_train, X_test, y_train, y_test = train_test_split(X_features, y_target, test_size=0.2, random_state=42)
+    X_train, _, y_train, _ = train_test_split(X_features, y_target, test_size=0.2, random_state=42)
 
     pipeline.fit(X_train, y_train)
 
-    preds = pipeline.predict(X_test)
-
-    mae = mean_absolute_error(y_test, preds)
-    rmse = root_mean_squared_error(y_test, preds)
-    r2 = r2_score(y_test, preds)
-
-    print(f"MAE: {mae:.2f}")
-    print(f"RMSE: {rmse:.2f}")
-    print(f"R2: {r2:.3f}")
 
     return pipeline
 
