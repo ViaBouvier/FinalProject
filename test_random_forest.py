@@ -9,6 +9,7 @@ from sklearn.tree import plot_tree
 
 from train_random_forest import load_data, build_features, load_pipeline
 
+
 def main():
     pipeline = load_pipeline()
     X, y = load_data()

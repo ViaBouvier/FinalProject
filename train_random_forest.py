@@ -1,3 +1,5 @@
+from matplotlib import pyplot as plt
+from sklearn.tree import plot_tree
 from ucimlrepo import fetch_ucirepo
 import pandas as pd
 import numpy as np
@@ -86,6 +88,16 @@ def preprocess_and_train(X, y, lags=(1, 3, 24)):
 
     return pipeline
 
+def visualize_tree(pipeline, feature_names):
+    rf = pipeline.named_steps['rf']
+    if hasattr(rf, 'estimators_'):
+        plt.figure(figsize=(20, 10))
+        plot_tree(rf.estimators_[0], feature_names=feature_names, filled=True, max_depth=3)
+        plt.title('Visualization of first tree in the Random Forest')
+        plt.show()
+    else:
+        print("The model does not have individual trees to visualize.")
+
 
 def main():
     X, y = load_data()
@@ -94,6 +106,9 @@ def main():
     with open('rf_pipeline.pkl', 'wb') as f:
         pickle.dump(model_pipeline, f)
     print('Saved pipeline to rf_pipeline.pkl')
+    # Visualize the first tree in the random forest
+    feature_names = model_pipeline.named_steps['preproc'].get_feature_names_out()
+    visualize_tree(model_pipeline, feature_names)
 
 
 if __name__ == '__main__':
